@@ -1794,7 +1794,8 @@ ImGuiWindow::ImGuiWindow(const char* name)
     AutoPosLastDirection = -1;
     HiddenFrames = 0;
     SetWindowPosAllowFlags = SetWindowSizeAllowFlags = SetWindowCollapsedAllowFlags = ImGuiSetCond_Always | ImGuiSetCond_Once | ImGuiSetCond_FirstUseEver | ImGuiSetCond_Appearing;
-    SetWindowPosCenterWanted = false;
+    SetWindowPosXAxisCenterWanted = false;
+    SetWindowPosYAxisCenterWanted = false;
 
     LastFrameActive = -1;
     ItemWidthDefault = 0.0f;
@@ -3931,10 +3932,11 @@ bool ImGui::Begin(const char* name, bool* p_open, const ImVec2& size_on_first_us
         const ImVec2 backup_cursor_pos = window->DC.CursorPos;                  // FIXME: not sure of the exact reason of this saving/restore anymore :( need to look into that.
         if (!window_was_active || window_appearing_after_being_hidden) window->SetWindowPosAllowFlags |= ImGuiSetCond_Appearing;
         window_pos_set_by_api = (window->SetWindowPosAllowFlags & g.SetNextWindowPosCond) != 0;
-        if (window_pos_set_by_api && ImLengthSqr(g.SetNextWindowPosVal - ImVec2(-FLT_MAX,-FLT_MAX)) < 0.001f)
+        if (window_pos_set_by_api && ((g.SetNextWindowPosVal.x == -FLT_MAX) || (g.SetNextWindowPosVal.y == -FLT_MAX)))
         {
-            window->SetWindowPosCenterWanted = true;                            // May be processed on the next frame if this is our first frame and we are measuring size
             window->SetWindowPosAllowFlags &= ~(ImGuiSetCond_Once | ImGuiSetCond_FirstUseEver | ImGuiSetCond_Appearing);
+            if (g.SetNextWindowPosVal.x == -FLT_MAX) window->SetWindowPosXAxisCenterWanted = true;
+            if (g.SetNextWindowPosVal.y == -FLT_MAX) window->SetWindowPosYAxisCenterWanted = true;
         }
         else
         {
@@ -4117,12 +4119,15 @@ bool ImGui::Begin(const char* name, bool* p_open, const ImVec2& size_on_first_us
         }
 
         bool window_pos_center = false;
-        window_pos_center |= (window->SetWindowPosCenterWanted && window->HiddenFrames == 0);
+        window_pos_center |= ((window->SetWindowPosXAxisCenterWanted | window->SetWindowPosYAxisCenterWanted) && window->HiddenFrames == 0);
         window_pos_center |= ((flags & ImGuiWindowFlags_Modal) && !window_pos_set_by_api && window_appearing_after_being_hidden);
         if (window_pos_center)
         {
             // Center (any sort of window)
-            SetWindowPos(window, ImMax(style.DisplaySafeAreaPadding, fullscreen_rect.GetCenter() - window->SizeFull * 0.5f), 0);
+            ImVec2 centerv = fullscreen_rect.GetCenter() - window->SizeFull * 0.5f;
+            if (!window->SetWindowPosXAxisCenterWanted) centerv.x = g.SetNextWindowPosVal.x;
+            if (!window->SetWindowPosYAxisCenterWanted) centerv.y = g.SetNextWindowPosVal.y;
+            SetWindowPos(window, ImMax(style.DisplaySafeAreaPadding, centerv), 0);
         }
         else if (flags & ImGuiWindowFlags_ChildMenu)
         {
@@ -4919,7 +4924,8 @@ static void SetWindowPos(ImGuiWindow* window, const ImVec2& pos, ImGuiSetCond co
     if (cond && (window->SetWindowPosAllowFlags & cond) == 0)
         return;
     window->SetWindowPosAllowFlags &= ~(ImGuiSetCond_Once | ImGuiSetCond_FirstUseEver | ImGuiSetCond_Appearing);
-    window->SetWindowPosCenterWanted = false;
+    window->SetWindowPosXAxisCenterWanted = false;
+    window->SetWindowPosYAxisCenterWanted = false;
 
     // Set
     const ImVec2 old_pos = window->Pos;
